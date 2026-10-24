@@ -1,0 +1,46 @@
+---
+import Admin from '../../layouts/Admin.astro';
+import { icon } from '../../lib/icons';
+import { PLUGINS } from '../../lib/plugins';
+import { all, first, run, nowIso } from '../../lib/util';
+const db = Astro.locals.runtime.env.DB;
+let err = '';
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData(); const act = String(f.get('act')); const id = Number(f.get('id')) || 0;
+  try {
+    if (act === 'delete') await run(db, 'DELETE FROM widgets WHERE id=?', id);
+    if (act === 'save') {
+      const name = String(f.get('name') || '').trim() || 'Tiện ích mới', code = String(f.get('code') || ''), vars = String(f.get('vars') || '');
+      if (id) { await run(db, 'UPDATE widgets SET name=?,code=?,vars=? WHERE id=?', name, code, vars, id); return Astro.redirect(`/admin/tien-ich?id=${id}&saved=1`); }
+      const r = await run(db, 'INSERT INTO widgets (name,code,vars,created_at) VALUES (?,?,?,?)', name, code, vars, nowIso()); return Astro.redirect(`/admin/tien-ich?id=${r.meta.last_row_id}&saved=1`);
+    }
+  } catch (e: any) { err = 'Lỗi: ' + (e?.message || e) + '. Đã chạy nang-cap-2.sql chưa?'; }
+  if (!err) return Astro.redirect('/admin/tien-ich');
+}
+let ws: any[] = []; try { ws = await all(db, 'SELECT id,name FROM widgets ORDER BY id DESC'); } catch { err = err || 'Chưa có bảng tiện ích. Hãy chạy nang-cap-2.sql.'; }
+const eid = Number(Astro.url.searchParams.get('id')) || 0; const mode = Astro.url.searchParams.get('moi');
+const cur: any = eid ? await first(db, 'SELECT * FROM widgets WHERE id=?', eid) : mode ? { id: 0, name: '', code: '', vars: '' } : null;
+---
+<Admin title="Tiện ích & plugin" active="tools">
+  <div class="pagehead"><h1>Tiện ích & plugin</h1></div>
+  {err && <div class="msg err">{err}</div>}{Astro.url.searchParams.get('saved') && <div class="msg">Đã lưu.</div>}
+  <div class="box"><h3>Plugin mã (đã cài)</h3>
+    <p class="meta">Mỗi plugin là một thư mục trong <code>src/plugins/</code>. Thêm thư mục mới lên GitHub là tự xuất hiện, không cần sửa lõi.</p>
+    <div class="cards">{PLUGINS.map((p) => (
+      <div class="item"><div class="tt"><b><Fragment set:html={icon(p.icon || 'puzzle', 16)} /> {p.name} <span class="meta">v{p.version || '1'}</span></b><span class="meta">{p.desc}</span><br /><span class="meta">Khối: {(p.blocks || []).map((b) => b.label).join(', ') || '(không)'}</span></div>
+        {p.admin && <a class="btn ghost sm" href={`/admin/p/${p.id}`}>Mở</a>}</div>
+    ))}</div></div>
+  <div class="box" style="margin-top:14px"><h3>Tiện ích tự tạo (HTML / CSS / JS)</h3>
+    <p class="meta">Tạo ngay tại đây, không cần deploy. Trong trình dựng trang chọn khối “Tiện ích đã tạo”, nhập số hiệu tiện ích. Dùng <code>{'{{ten}}'}</code> trong mã để thay giá trị từ ô “Biến”.</p>
+    <div class="cards">{ws.map((w) => <div class="item"><div class="tt"><b>#{w.id} · {w.name}</b></div><div class="acts"><a class="btn sm" href={`/admin/tien-ich?id=${w.id}`}>Sửa</a>
+      <form method="post" class="inline" onsubmit="return confirm('Xóa tiện ích?')"><input type="hidden" name="id" value={w.id} /><button class="btn red sm" name="act" value="delete">Xóa</button></form></div></div>)}</div>
+    <p><a class="btn ic-b" href="/admin/tien-ich?moi=1"><Fragment set:html={icon('plus', 16)} />Tạo tiện ích mới</a></p>
+    {cur && (
+      <form method="post"><input type="hidden" name="act" value="save" /><input type="hidden" name="id" value={cur.id} />
+        <label for="n">Tên</label><input id="n" type="text" name="name" value={cur.name} />
+        <label for="c">Mã (HTML, &lt;style&gt;, &lt;script&gt;)</label><textarea id="c" name="code" style="min-height:220px;font-family:monospace">{cur.code}</textarea>
+        <label for="v">Biến mặc định, mỗi dòng ten=giatri</label><textarea id="v" name="vars" style="min-height:70px;font-family:monospace">{cur.vars}</textarea>
+        <p><button class="btn" type="submit">Lưu tiện ích</button></p></form>
+    )}
+  </div>
+</Admin>

@@ -1,0 +1,9 @@
+---
+import Admin from '../../../layouts/Admin.astro';
+import { PLUGINS } from '../../../lib/plugins';
+const p = PLUGINS.find((x) => x.id === Astro.params.id);
+if (!p || !p.admin) return Astro.redirect('/admin/tien-ich');
+let html = '';
+try { html = await p.admin({ db: Astro.locals.runtime.env.DB, env: Astro.locals.runtime.env, url: Astro.url, request: Astro.request }); } catch (e: any) { html = `<div class="msg err">Plugin lỗi: ${String(e?.message || e).replace(/</g, '&lt;')}</div>`; }
+---
+<Admin title={p.name} active={'p:' + p.id}><div class="pagehead"><h1>{p.name}</h1></div><div set:html={html}></div></Admin>
